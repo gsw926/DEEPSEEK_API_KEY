@@ -590,13 +590,20 @@ def generate_pushplus_html(articles, config):
 
         img_tag = f'<img src="{safe_img}" style="width:100%;height:200px;object-fit:cover;display:block;" onerror="this.style.display=\'none\'" />' if safe_img else ""
 
-        # Show a short visible URL below the button as a fallback (in case WeChat blocks the <a> link)
+        # Show the FULL URL as plain text below the button so the user can long-press to copy it
+        # (WeChat often blocks <a> links to external sites, so plain text is the reliable fallback)
         url_is_search = a.get("url_is_search", False)
         button_text = "\U0001f50d \u641c\u7d22\u539f\u6587 \u2192" if url_is_search else "\u9605\u8bfb\u539f\u6587 \u2192"
         url_display = ""
         if url and url != "#":
-            short_url = _shorten_url(url, 90)
-            url_display = f'<div style="font-size:11px;color:#9ca3af;margin-top:6px;word-break:break-all;line-height:1.5;">\U0001f517 {short_url}</div>'
+            url_display = (
+                f'<div style="margin-top:8px;padding:8px 10px;background:#f3f4f6;border-radius:6px;'
+                f'font-size:12px;color:#6b7280;word-break:break-all;line-height:1.6;'
+                f'border:1px dashed #d1d5db;">'
+                f'\U0001f517 \u94fe\u63a5\uff08\u957f\u6309\u53ef\u590d\u5236\uff09\uff1a<br/>'
+                f'<span style="color:#3b82f6;">{url}</span>'
+                f'</div>'
+            )
 
         cards += f"""
     <div style="background:#fff;margin:10px;border-radius:12px;overflow:hidden;box-shadow:0 1px 6px rgba(0,0,0,0.05);">
