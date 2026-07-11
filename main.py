@@ -469,6 +469,9 @@ def generate_html_file(articles, config):
         safe_url = _escape_attr(url)
         safe_img = _escape_attr(img) if img else ""
 
+        url_is_search = a.get("url_is_search", False)
+        button_text = "\U0001f50d \u641c\u7d22\u539f\u6587 \u2192" if url_is_search else "\u9605\u8bfb\u539f\u6587 \u2192"
+
         img_tag = f'<img src="{safe_img}" class="card-img" onerror="this.style.display=\'none\'" />' if safe_img else ""
 
         cards += f"""
@@ -487,7 +490,7 @@ def generate_html_file(articles, config):
           <div class="insight-label" style="color:{s['color']};">\u8d8b\u52bf\u6d1e\u5bdf</div>
           <div class="insight-text">{insight}</div>
         </div>
-        <a href="{safe_url}" target="_blank" rel="noopener" class="card-link" style="color:{s['color']};">\u9605\u8bfb\u539f\u6587 -></a>
+        <a href="{safe_url}" target="_blank" rel="noopener" class="card-link" style="color:{s['color']};">{button_text}</a>
       </div>
     </div>"""
 
@@ -588,7 +591,8 @@ def generate_pushplus_html(articles, config):
         img_tag = f'<img src="{safe_img}" style="width:100%;height:200px;object-fit:cover;display:block;" onerror="this.style.display=\'none\'" />' if safe_img else ""
 
         # Show a short visible URL below the button as a fallback (in case WeChat blocks the <a> link)
-        is_google_news = "news.google.com" in url
+        url_is_search = a.get("url_is_search", False)
+        button_text = "\U0001f50d \u641c\u7d22\u539f\u6587 \u2192" if url_is_search else "\u9605\u8bfb\u539f\u6587 \u2192"
         url_display = ""
         if url and url != "#":
             short_url = _shorten_url(url, 90)
@@ -610,7 +614,7 @@ def generate_pushplus_html(articles, config):
           <div style="font-size:11px;font-weight:700;color:{s['color']};margin-bottom:3px;">\u8d8b\u52bf\u6d1e\u5bdf</div>
           <div style="font-size:12px;color:#4b5563;line-height:1.7;">{insight}</div>
         </div>
-        <a href="{safe_url}" style="display:inline-block;font-size:13px;font-weight:600;color:{s['color']};text-decoration:none;padding:6px 14px;border:1px solid {s['color']};border-radius:6px;">\u9605\u8bfb\u539f\u6587 \u2192</a>
+        <a href="{safe_url}" style="display:inline-block;font-size:13px;font-weight:600;color:{s['color']};text-decoration:none;padding:6px 14px;border:1px solid {s['color']};border-radius:6px;">{button_text}</a>
         {url_display}
       </div>
     </div>"""
@@ -707,9 +711,20 @@ def run_topic(topic_key, config):
             print(f"  Processing: {short_title}...")
             real_url, img = resolve_and_get_image(url)
             resolved = "news.google.com" not in real_url
+
+            # If URL resolution failed (still Google News), use Google search as fallback
+            if not resolved:
+                title = a.get("title", "")
+                source = a.get("source", "")
+                search_query = f"{title} {source}".strip() if source else title
+                real_url = f"https://www.google.com/search?q={quote(search_query)}"
+                a["url_is_search"] = True
+                print(f"    🔄 Fallback to Google search: {real_url[:80]}")
+            else:
+                a["url_is_search"] = False
+                print(f"    ✅ Resolved: {real_url[:80]}")
+
             a["original_url"] = real_url
-            status = "✅ Resolved" if resolved else "⚠️ Still Google News URL"
-            print(f"    {status}: {real_url[:80]}")
             if img:
                 a["image_url"] = img
                 print(f"    ✅ Image: {img[:80]}")
