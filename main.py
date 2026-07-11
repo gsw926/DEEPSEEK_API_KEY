@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """
-TV Industry Daily News Push - Cloud Edition
+Daily Industry News Push - Cloud Edition (Multi-Topic)
 Google News RSS -> DeepSeek AI -> PushPlus -> WeChat
 Runs on GitHub Actions, no local machine needed.
+
+Supported topics: tv, design, ai
+Set TOPIC env var to choose: TOPIC=tv | design | ai
 """
 
 import os
@@ -16,7 +19,7 @@ from urllib.parse import quote, urljoin
 
 import requests
 
-# ==================== Configuration ====================
+# ==================== Global Config ====================
 
 DEEPSEEK_URL = "https://api.deepseek.com/v1/chat/completions"
 PUSHPLUS_URL = "https://www.pushplus.plus/send"
@@ -26,38 +29,112 @@ HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 }
 
-# Search queries: (category, query, language)
-SEARCH_QUERIES = [
-    ("产品功能", "智能电视 新功能 发布", "zh-CN"),
-    ("产品功能", "smart TV new features 2025", "en"),
-    ("用户体验", "电视 用户体验 交互 评测", "zh-CN"),
-    ("用户体验", "TV user experience interface", "en"),
-    ("最新科技", "电视 显示技术 Mini LED OLED MicroLED", "zh-CN"),
-    ("最新科技", "TV display technology 2025", "en"),
-    ("行业趋势", "电视行业 趋势 市场 数据", "zh-CN"),
-    ("行业趋势", "TV industry trends market 2025", "en"),
-]
-
-# Category styling: gradient colors
-CAT_STYLES = {
-    "产品功能": {"grad": "#2563eb,#3b82f6", "color": "#3b82f6"},
-    "用户体验": {"grad": "#7c3aed,#a855f7", "color": "#a855f7"},
-    "最新科技": {"grad": "#0891b2,#06b6d4", "color": "#06b6d4"},
-    "行业趋势": {"grad": "#ea580c,#f97316", "color": "#f97316"},
-}
-
 MAX_PER_QUERY = 8
 TIMEOUT = 15
+
+# ==================== Topic Configurations ====================
+
+TOPICS = {
+    # ---------- TV Industry ----------
+    "tv": {
+        "emoji": "\U0001F4FA",  # 📺
+        "name_cn": "电视行业趋势",
+        "name_en": "TV Industry Daily",
+        "output_file": "tv-industry-daily-push.html",
+        "header_grad": "#0f0c29,#302b63,#24243e",
+        "queries": [
+            ("\u4ea7\u54c1\u529f\u80fd", "\u667a\u80fd\u7535\u89c6 \u65b0\u529f\u80fd \u53d1\u5e03", "zh-CN"),
+            ("\u4ea7\u54c1\u529f\u80fd", "smart TV new features 2025", "en"),
+            ("\u7528\u6237\u4f53\u9a8c", "\u7535\u89c6 \u7528\u6237\u4f53\u9a8c \u4ea4\u4e92 \u8bc4\u6d4b", "zh-CN"),
+            ("\u7528\u6237\u4f53\u9a8c", "TV user experience interface", "en"),
+            ("\u6700\u65b0\u79d1\u6280", "\u7535\u89c6 \u663e\u793a\u6280\u672f Mini LED OLED MicroLED", "zh-CN"),
+            ("\u6700\u65b0\u79d1\u6280", "TV display technology 2025", "en"),
+            ("\u884c\u4e1a\u8d8b\u52bf", "\u7535\u89c6\u884c\u4e1a \u8d8b\u52bf \u5e02\u573a \u6570\u636e", "zh-CN"),
+            ("\u884c\u4e1a\u8d8b\u52bf", "TV industry trends market 2025", "en"),
+        ],
+        "cat_styles": {
+            "\u4ea7\u54c1\u529f\u80fd": {"grad": "#2563eb,#3b82f6", "color": "#3b82f6"},
+            "\u7528\u6237\u4f53\u9a8c": {"grad": "#7c3aed,#a855f7", "color": "#a855f7"},
+            "\u6700\u65b0\u79d1\u6280": {"grad": "#0891b2,#06b6d4", "color": "#06b6d4"},
+            "\u884c\u4e1a\u8d8b\u52bf": {"grad": "#ea580c,#f97316", "color": "#f97316"},
+        },
+        "system_prompt": "\u4f60\u662f\u7535\u89c6\u884c\u4e1a\u6bcf\u65e5\u8d8b\u52bf\u65b0\u95fb\u7f16\u8f91\uff0c\u64c5\u957f\u4ece\u65b0\u95fb\u5217\u8868\u4e2d\u7b5b\u9009\u6700\u6709\u4ef7\u503c\u7684\u4fe1\u606f\uff0c\u5e76\u751f\u6210\u7cbe\u70bc\u7684\u4e2d\u6587\u6458\u8981\u548c\u8d8b\u52bf\u6d1e\u5bdf\u3002",
+        "ai_categories": "\u4ea7\u54c1\u529f\u80fd\u3001\u7528\u6237\u4f53\u9a8c\u3001\u6700\u65b0\u79d1\u6280\u3001\u884c\u4e1a\u8d8b\u52bf",
+    },
+
+    # ---------- Design Industry ----------
+    "design": {
+        "emoji": "\U0001F3A8",  # 🎨
+        "name_cn": "设计行业趋势",
+        "name_en": "Design Industry Daily",
+        "output_file": "design-industry-daily-push.html",
+        "header_grad": "#1a1a2e,#16213e,#0f3460",
+        "queries": [
+            ("\u8bbe\u8ba1\u5de5\u5177", "Figma Adobe Sketch \u65b0\u529f\u80fd \u8bbe\u8ba1\u5de5\u5177", "zh-CN"),
+            ("\u8bbe\u8ba1\u5de5\u5177", "design tools new features 2025 Figma Adobe", "en"),
+            ("\u7528\u6237\u4f53\u9a8c", "UX UI \u8bbe\u8ba1 \u8d8b\u52bf \u7528\u6237\u4f53\u9a8c", "zh-CN"),
+            ("\u7528\u6237\u4f53\u9a8c", "UX UI design trends 2025 user experience", "en"),
+            ("\u521b\u610f\u8d8b\u52bf", "\u89c6\u89c9\u8bbe\u8ba1 \u521b\u610f \u8d8b\u52bf \u7075\u611f", "zh-CN"),
+            ("\u521b\u610f\u8d8b\u52bf", "graphic design visual trends 2025 creative", "en"),
+            ("\u884c\u4e1a\u52a8\u6001", "\u8bbe\u8ba1\u884c\u4e1a \u52a8\u6001 \u65b0\u95fb \u5e74\u5ea6\u62a5\u544a", "zh-CN"),
+            ("\u884c\u4e1a\u52a8\u6001", "design industry news awards 2025", "en"),
+        ],
+        "cat_styles": {
+            "\u8bbe\u8ba1\u5de5\u5177": {"grad": "#059669,#10b981", "color": "#10b981"},
+            "\u7528\u6237\u4f53\u9a8c": {"grad": "#7c3aed,#a855f7", "color": "#a855f7"},
+            "\u521b\u610f\u8d8b\u52bf": {"grad": "#db2777,#ec4899", "color": "#ec4899"},
+            "\u884c\u4e1a\u52a8\u6001": {"grad": "#ea580c,#f97316", "color": "#f97316"},
+        },
+        "system_prompt": "\u4f60\u662f\u8bbe\u8ba1\u884c\u4e1a\u6bcf\u65e5\u8d8b\u52bf\u65b0\u95fb\u7f16\u8f91\uff0c\u64c5\u957f\u4ece\u65b0\u95fb\u5217\u8868\u4e2d\u7b5b\u9009\u6700\u6709\u4ef7\u503c\u7684\u4fe1\u606f\uff0c\u5e76\u751f\u6210\u7cbe\u70bc\u7684\u4e2d\u6587\u6458\u8981\u548c\u8d8b\u52bf\u6d1e\u5bdf\u3002",
+        "ai_categories": "\u8bbe\u8ba1\u5de5\u5177\u3001\u7528\u6237\u4f53\u9a8c\u3001\u521b\u610f\u8d8b\u52bf\u3001\u884c\u4e1a\u52a8\u6001",
+    },
+
+    # ---------- AI Industry ----------
+    "ai": {
+        "emoji": "\U0001F916",  # 🤖
+        "name_cn": "AI行业趋势",
+        "name_en": "AI Industry Daily",
+        "output_file": "ai-industry-daily-push.html",
+        "header_grad": "#0c0a09,#1c1917,#292524",
+        "queries": [
+            ("\u6a21\u578b\u4e0e\u6280\u672f", "\u5927\u6a21\u578b \u53d1\u5e03 GPT Claude Gemini \u6280\u672f", "zh-CN"),
+            ("\u6a21\u578b\u4e0e\u6280\u672f", "LLM new model release 2025 GPT Claude Gemini", "en"),
+            ("\u4ea7\u54c1\u5e94\u7528", "AI \u4ea7\u54c1 \u5e94\u7528 \u53d1\u5e03 2025", "zh-CN"),
+            ("\u4ea7\u54c1\u5e94\u7528", "AI product launch features 2025", "en"),
+            ("\u884c\u4e1a\u52a8\u6001", "AI \u884c\u4e1a \u8d44\u8baf \u878d\u8d44 \u653f\u7b56", "zh-CN"),
+            ("\u884c\u4e1a\u52a8\u6001", "AI industry news funding regulation 2025", "en"),
+            ("\u524d\u6cbf\u7814\u7a76", "AI \u7814\u7a76 \u8bba\u6587 \u7a81\u7834 \u57fa\u51c6\u6d4b\u8bd5", "zh-CN"),
+            ("\u524d\u6cbf\u7814\u7a76", "AI research paper benchmark breakthrough 2025", "en"),
+        ],
+        "cat_styles": {
+            "\u6a21\u578b\u4e0e\u6280\u672f": {"grad": "#2563eb,#3b82f6", "color": "#3b82f6"},
+            "\u4ea7\u54c1\u5e94\u7528": {"grad": "#0d9488,#14b8a6", "color": "#14b8a6"},
+            "\u884c\u4e1a\u52a8\u6001": {"grad": "#d97706,#f59e0b", "color": "#f59e0b"},
+            "\u524d\u6cbf\u7814\u7a76": {"grad": "#7c3aed,#8b5cf6", "color": "#8b5cf6"},
+        },
+        "system_prompt": "\u4f60\u662fAI\u4eba\u5de5\u667a\u80fd\u884c\u4e1a\u6bcf\u65e5\u8d8b\u52bf\u65b0\u95fb\u7f16\u8f91\uff0c\u64c5\u957f\u4ece\u65b0\u95fb\u5217\u8868\u4e2d\u7b5b\u9009\u6700\u6709\u4ef7\u503c\u7684\u4fe1\u606f\uff0c\u5e76\u751f\u6210\u7cbe\u70bc\u7684\u4e2d\u6587\u6458\u8981\u548c\u8d8b\u52bf\u6d1e\u5bdf\u3002",
+        "ai_categories": "\u6a21\u578b\u4e0e\u6280\u672f\u3001\u4ea7\u54c1\u5e94\u7528\u3001\u884c\u4e1a\u52a8\u6001\u3001\u524d\u6cbf\u7814\u7a76",
+    },
+}
+
+
+def get_topic_config():
+    """Get topic configuration from TOPIC env var."""
+    topic = os.environ.get("TOPIC", "tv").lower().strip()
+    if topic not in TOPICS:
+        print(f"ERROR: Unknown topic '{topic}'. Available: {list(TOPICS.keys())}")
+        sys.exit(1)
+    return TOPICS[topic], topic
 
 
 # ==================== Step 1: Fetch RSS News ====================
 
-def fetch_rss():
+def fetch_rss(config):
     """Fetch news from Google News RSS for all search queries."""
     articles = []
     seen_titles = set()
 
-    for cat, query, lang in SEARCH_QUERIES:
+    for cat, query, lang in config["queries"]:
         if lang == "zh-CN":
             url = f"https://news.google.com/rss/search?q={quote(query)}&hl=zh-CN&gl=CN&ceid=CN:zh-Hans"
         else:
@@ -77,20 +154,16 @@ def fetch_rss():
                 desc = item.findtext("description", "")
                 pub_date = item.findtext("pubDate", "")
 
-                # Extract source name
                 source_elem = item.find("source")
                 source = ""
                 if source_elem is not None and source_elem.text:
                     source = source_elem.text.strip()
 
-                # Clean title (Google News appends " - Source Name")
                 if " - " in title and source and title.endswith(source):
                     title = title[: -len(source) - 3]
 
-                # Strip HTML from description
                 clean_desc = re.sub(r"<[^>]+>", "", desc).strip()
 
-                # Deduplicate
                 title_key = title.lower()[:60]
                 if title_key in seen_titles:
                     continue
@@ -127,7 +200,6 @@ def resolve_and_get_image(google_news_url):
         resp = requests.get(google_news_url, headers=HEADERS, timeout=TIMEOUT, allow_redirects=True)
         real_url = resp.url
 
-        # Only extract images if we reached the actual article page
         if "news.google.com" not in real_url:
             image_url = extract_image(resp.text, real_url)
     except Exception as e:
@@ -164,7 +236,7 @@ def extract_image(html, base_url):
 
 # ==================== Step 3: DeepSeek Summarization ====================
 
-def summarize_with_ai(articles):
+def summarize_with_ai(articles, config):
     """Use DeepSeek API to select and summarize the best articles."""
     api_key = os.environ.get("DEEPSEEK_API_KEY", "")
     if not api_key:
@@ -187,37 +259,35 @@ def summarize_with_ai(articles):
         indent=2,
     )
 
-    system_prompt = (
-        "你是电视行业每日趋势新闻编辑，擅长从新闻列表中筛选最有价值的信息，"
-        "并生成精炼的中文摘要和趋势洞察。"
-    )
+    categories = config["ai_categories"]
+    system_prompt = config["system_prompt"]
 
-    user_prompt = f"""请从以下新闻列表中筛选和总结，生成每日电视行业趋势推送。
+    user_prompt = f"""\u8bf7\u4ece\u4ee5\u4e0b\u65b0\u95fb\u5217\u8868\u4e2d\u7b5b\u9009\u548c\u603b\u7ed3\uff0c\u751f\u6210\u6bcf\u65e5\u884c\u4e1a\u8d8b\u52bf\u63a8\u9001\u3002
 
-要求：
-1. 去重：同一事件只保留一条
-2. 筛选4-6条最有价值的新闻，确保覆盖四个方向：产品功能、用户体验、最新科技、行业趋势
-3. 为每条新闻生成中文标题、摘要和趋势洞察
-4. summary中的关键数据用<strong>标签加粗，如 <strong>92.8%</strong>
-5. original_url必须使用提供的url字段值，不要修改
+\u8981\u6c42\uff1a
+1. \u53bb\u91cd\uff1a\u540c\u4e00\u4e8b\u4ef6\u53ea\u4fdd\u7559\u4e00\u6761
+2. \u7b5b\u90094-6\u6761\u6700\u6709\u4ef7\u503c\u7684\u65b0\u95fb\uff0c\u786e\u4fdd\u8986\u76d6\u56db\u4e2a\u65b9\u5411\uff1a{categories}
+3. \u4e3a\u6bcf\u6761\u65b0\u95fb\u751f\u6210\u4e2d\u6587\u6807\u9898\u3001\u6458\u8981\u548c\u8d8b\u52bf\u6d1e\u5bdf
+4. summary\u4e2d\u7684\u5173\u952e\u6570\u636e\u7528<strong>\u6807\u7b7e\u52a0\u7c97\uff0c\u5982 <strong>92.8%</strong>
+5. original_url\u5fc5\u987b\u4f7f\u7528\u63d0\u4f9b\u7684url\u5b57\u6bb5\u503c\uff0c\u4e0d\u8981\u4fee\u6539
 
-返回严格JSON格式：
+\u8fd4\u56de\u4e25\u683cJSON\u683c\u5f0f\uff1a
 {{
   "articles": [
     {{
-      "category": "产品功能",
-      "emoji": "与内容相关的emoji",
-      "title": "中文标题(15-25字，简洁有力)",
-      "source": "来源媒体名称",
-      "date": "2026.07 或 2026.07.11",
-      "summary": "中文摘要(2-3句话，包含关键数据)",
-      "insight": "趋势洞察(1-2句话，分析行业意义)",
-      "original_url": "提供的url值"
+      "category": "{categories.split("\u3001")[0]}",
+      "emoji": "\u4e0e\u5185\u5bb9\u76f8\u5173\u7684emoji",
+      "title": "\u4e2d\u6587\u6807\u9898(15-25\u5b57\uff0c\u7b80\u6d01\u6709\u529b)",
+      "source": "\u6765\u6e90\u5a92\u4f53\u540d\u79f0",
+      "date": "2026.07 \u6216 2026.07.11",
+      "summary": "\u4e2d\u6587\u6458\u8981(2-3\u53e5\u8bdd\uff0c\u5305\u542b\u5173\u952e\u6570\u636e)",
+      "insight": "\u8d8b\u52bf\u6d1e\u5bdf(1-2\u53e5\u8bdd\uff0c\u5206\u6790\u884c\u4e1a\u610f\u4e49)",
+      "original_url": "\u63d0\u4f9b\u7684url\u503c"
     }}
   ]
 }}
 
-新闻列表：
+\u65b0\u95fb\u5217\u8868\uff1a
 {articles_json}"""
 
     try:
@@ -258,8 +328,8 @@ def summarize_with_ai(articles):
 
 def _get_date_str():
     now = datetime.now(BEIJING_TZ)
-    weekdays = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
-    return now.strftime("%Y年%m月%d日"), weekdays[now.weekday()]
+    weekdays = ["\u661f\u671f\u4e00", "\u661f\u671f\u4e8c", "\u661f\u671f\u4e09", "\u661f\u671f\u56db", "\u661f\u671f\u4e94", "\u661f\u671f\u516d", "\u661f\u671f\u65e5"]
+    return now.strftime("%Y\u5e74%m\u6708%d\u65e5"), weekdays[now.weekday()]
 
 
 def _count_by_category(articles):
@@ -270,24 +340,28 @@ def _count_by_category(articles):
     return counts
 
 
-def generate_html_file(articles):
+def generate_html_file(articles, config):
     """Generate full HTML file with CSS for browser viewing."""
     date_str, weekday = _get_date_str()
     cat_counts = _count_by_category(articles)
+    cat_styles = config["cat_styles"]
+    fallback_style = list(cat_styles.values())[-1]
+    emoji = config["emoji"]
+    name_cn = config["name_cn"]
+    name_en = config["name_en"]
+    header_grad = config["header_grad"]
 
-    # Stats bar
     stats_items = "".join(
-        f'<div class="stats-item" style="background:linear-gradient(135deg,{CAT_STYLES.get(c, CAT_STYLES["行业趋势"])["grad"]});">'
+        f'<div class="stats-item" style="background:linear-gradient(135deg,{cat_styles.get(c, fallback_style)["grad"]});">'
         f'<div class="stats-num">{cnt}</div><div class="stats-label">{c}</div></div>'
         for c, cnt in cat_counts.items()
     )
 
-    # Cards
     cards = ""
     for a in articles:
-        cat = a.get("category", "行业趋势")
-        s = CAT_STYLES.get(cat, CAT_STYLES["行业趋势"])
-        emoji = a.get("emoji", "")
+        cat = a.get("category", "")
+        s = cat_styles.get(cat, fallback_style)
+        a_emoji = a.get("emoji", "")
         title = a.get("title", "")
         source = a.get("source", "")
         date = a.get("date", "")
@@ -304,17 +378,17 @@ def generate_html_file(articles):
       {img_tag}
       <div class="card-body">
         <div class="card-header">
-          <span class="card-emoji">{emoji}</span>
+          <span class="card-emoji">{a_emoji}</span>
           <span class="card-tag" style="background:{s['color']};">{cat}</span>
           <span class="card-meta">{source} - {date}</span>
         </div>
         <div class="card-title">{title}</div>
         <div class="card-summary">{summary}</div>
         <div class="insight" style="border-left-color:{s['color']};">
-          <div class="insight-label" style="color:{s['color']};">趋势洞察</div>
+          <div class="insight-label" style="color:{s['color']};">\u8d8b\u52bf\u6d1e\u5bdf</div>
           <div class="insight-text">{insight}</div>
         </div>
-        <a href="{url}" target="_blank" class="card-link" style="color:{s['color']};">阅读原文 -></a>
+        <a href="{url}" target="_blank" class="card-link" style="color:{s['color']};">\u9605\u8bfb\u539f\u6587 -></a>
       </div>
     </div>"""
 
@@ -323,12 +397,12 @@ def generate_html_file(articles):
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>每日电视行业趋势 - {date_str}</title>
+<title>\u6bcf\u65e5{name_cn} - {date_str}</title>
 <style>
 * {{ margin:0; padding:0; box-sizing:border-box; }}
 body {{ background:#f0f0f5; font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif; color:#1a1a2e; line-height:1.7; }}
 .container {{ max-width:680px; margin:0 auto; }}
-.header {{ background:linear-gradient(135deg,#0f0c29,#302b63,#24243e); padding:32px 20px; text-align:center; }}
+.header {{ background:linear-gradient(135deg,{header_grad}); padding:32px 20px; text-align:center; }}
 .header-tag {{ display:inline-block; background:rgba(255,255,255,0.12); border:1px solid rgba(255,255,255,0.2); border-radius:20px; padding:4px 14px; font-size:12px; color:#a5b4fc; margin-bottom:10px; }}
 .header-title {{ color:#fff; font-size:20px; font-weight:700; }}
 .header-date {{ color:#c7d2fe; font-size:13px; margin-top:4px; }}
@@ -359,44 +433,48 @@ body {{ background:#f0f0f5; font-family:-apple-system,BlinkMacSystemFont,'PingFa
 <body>
 <div class="container">
   <div class="header">
-    <div class="header-tag">TV Industry Daily</div>
-    <div class="header-title">📺 每日电视行业趋势</div>
-    <div class="header-date">{date_str} · {weekday}</div>
+    <div class="header-tag">{name_en}</div>
+    <div class="header-title">{emoji} \u6bcf\u65e5{name_cn}</div>
+    <div class="header-date">{date_str} \u00b7 {weekday}</div>
   </div>
   <div class="stats">
-    <div class="stats-item" style="background:linear-gradient(135deg,#6366f1,#818cf8);"><div class="stats-num">{len(articles)}</div><div class="stats-label">精选要闻</div></div>
+    <div class="stats-item" style="background:linear-gradient(135deg,#6366f1,#818cf8);"><div class="stats-num">{len(articles)}</div><div class="stats-label">\u7cbe\u9009\u8981\u95fb</div></div>
     {stats_items}
   </div>
   {cards}
   <div class="footer">
     <div class="footer-line"></div>
-    <div>数据来源：Google News RSS · DeepSeek AI 总结</div>
-    <div style="margin-top:3px;">由 GitHub Actions 自动生成 · 每日 08:30 推送</div>
+    <div>\u6570\u636e\u6765\u6e90\uff1aGoogle News RSS \u00b7 DeepSeek AI \u603b\u7ed3</div>
+    <div style="margin-top:3px;">\u7531 GitHub Actions \u81ea\u52a8\u751f\u6210 \u00b7 \u6bcf\u65e5\u63a8\u9001</div>
   </div>
 </div>
 </body>
 </html>"""
 
 
-def generate_pushplus_html(articles):
+def generate_pushplus_html(articles, config):
     """Generate inline-styled HTML for PushPlus/WeChat."""
     date_str, weekday = _get_date_str()
     cat_counts = _count_by_category(articles)
+    cat_styles = config["cat_styles"]
+    fallback_style = list(cat_styles.values())[-1]
+    emoji = config["emoji"]
+    name_cn = config["name_cn"]
+    name_en = config["name_en"]
+    header_grad = config["header_grad"]
 
-    # Stats
     stats_items = "".join(
-        f'<div style="flex:1;padding:10px 4px;border-radius:10px;background:linear-gradient(135deg,{CAT_STYLES.get(c, CAT_STYLES["行业趋势"])["grad"]});margin:0 3px;">'
+        f'<div style="flex:1;padding:10px 4px;border-radius:10px;background:linear-gradient(135deg,{cat_styles.get(c, fallback_style)["grad"]});margin:0 3px;">'
         f'<div style="font-size:20px;font-weight:800;color:#fff;">{cnt}</div>'
         f'<div style="font-size:10px;color:rgba(255,255,255,0.85);">{c}</div></div>'
         for c, cnt in cat_counts.items()
     )
 
-    # Cards
     cards = ""
     for a in articles:
-        cat = a.get("category", "行业趋势")
-        s = CAT_STYLES.get(cat, CAT_STYLES["行业趋势"])
-        emoji = a.get("emoji", "")
+        cat = a.get("category", "")
+        s = cat_styles.get(cat, fallback_style)
+        a_emoji = a.get("emoji", "")
         title = a.get("title", "")
         source = a.get("source", "")
         date = a.get("date", "")
@@ -413,42 +491,42 @@ def generate_pushplus_html(articles):
       {img_tag}
       <div style="padding:16px;">
         <div style="margin-bottom:8px;">
-          <span style="font-size:18px;">{emoji}</span>
+          <span style="font-size:18px;">{a_emoji}</span>
           <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;color:#fff;background:{s['color']};">{cat}</span>
           <span style="font-size:11px;color:#9ca3af;float:right;">{source} - {date}</span>
         </div>
         <div style="font-size:15px;font-weight:700;color:#1a1a2e;margin-bottom:8px;line-height:1.5;">{title}</div>
         <div style="font-size:13px;color:#4b5563;line-height:1.8;margin-bottom:10px;">{summary}</div>
         <div style="background:#f8fafc;border-left:3px solid {s['color']};border-radius:6px;padding:10px 12px;margin-bottom:10px;">
-          <div style="font-size:11px;font-weight:700;color:{s['color']};margin-bottom:3px;">趋势洞察</div>
+          <div style="font-size:11px;font-weight:700;color:{s['color']};margin-bottom:3px;">\u8d8b\u52bf\u6d1e\u5bdf</div>
           <div style="font-size:12px;color:#4b5563;line-height:1.7;">{insight}</div>
         </div>
-        <a href="{url}" style="font-size:13px;font-weight:600;color:{s['color']};text-decoration:none;">阅读原文 -></a>
+        <a href="{url}" style="font-size:13px;font-weight:600;color:{s['color']};text-decoration:none;">\u9605\u8bfb\u539f\u6587 -></a>
       </div>
     </div>"""
 
     return f"""<div style="max-width:680px;margin:0 auto;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif;color:#1a1a2e;line-height:1.7;">
-  <div style="background:linear-gradient(135deg,#0f0c29,#302b63,#24243e);padding:32px 20px;text-align:center;border-radius:12px 12px 0 0;">
-    <div style="display:inline-block;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.2);border-radius:20px;padding:4px 14px;font-size:12px;color:#a5b4fc;margin-bottom:10px;">TV Industry Daily</div>
-    <div style="color:#fff;font-size:20px;font-weight:700;">📺 每日电视行业趋势</div>
-    <div style="color:#c7d2fe;font-size:13px;margin-top:4px;">{date_str} · {weekday}</div>
+  <div style="background:linear-gradient(135deg,{header_grad});padding:32px 20px;text-align:center;border-radius:12px 12px 0 0;">
+    <div style="display:inline-block;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.2);border-radius:20px;padding:4px 14px;font-size:12px;color:#a5b4fc;margin-bottom:10px;">{name_en}</div>
+    <div style="color:#fff;font-size:20px;font-weight:700;">{emoji} \u6bcf\u65e5{name_cn}</div>
+    <div style="color:#c7d2fe;font-size:13px;margin-top:4px;">{date_str} \u00b7 {weekday}</div>
   </div>
   <div style="display:flex;text-align:center;background:#fff;padding:12px 8px;">
-    <div style="flex:1;padding:10px 4px;border-radius:10px;background:linear-gradient(135deg,#6366f1,#818cf8);margin:0 3px;"><div style="font-size:20px;font-weight:800;color:#fff;">{len(articles)}</div><div style="font-size:10px;color:rgba(255,255,255,0.85);">精选要闻</div></div>
+    <div style="flex:1;padding:10px 4px;border-radius:10px;background:linear-gradient(135deg,#6366f1,#818cf8);margin:0 3px;"><div style="font-size:20px;font-weight:800;color:#fff;">{len(articles)}</div><div style="font-size:10px;color:rgba(255,255,255,0.85);">\u7cbe\u9009\u8981\u95fb</div></div>
     {stats_items}
   </div>
   {cards}
   <div style="text-align:center;padding:20px 16px 32px;color:#9ca3af;font-size:11px;">
     <div style="width:36px;height:3px;background:linear-gradient(90deg,#6366f1,#a855f7);border-radius:2px;margin:0 auto 8px;"></div>
-    <div>数据来源：Google News RSS · DeepSeek AI 总结</div>
-    <div style="margin-top:3px;">由 GitHub Actions 自动生成 · 每日 08:30 推送</div>
+    <div>\u6570\u636e\u6765\u6e90\uff1aGoogle News RSS \u00b7 DeepSeek AI \u603b\u7ed3</div>
+    <div style="margin-top:3px;">\u7531 GitHub Actions \u81ea\u52a8\u751f\u6210 \u00b7 \u6bcf\u65e5\u63a8\u9001</div>
   </div>
 </div>"""
 
 
 # ==================== Step 5: Push to WeChat ====================
 
-def push_to_wechat(html_content):
+def push_to_wechat(html_content, config):
     """Push HTML content to WeChat via PushPlus."""
     token = os.environ.get("PUSHPLUS_TOKEN", "")
     if not token:
@@ -456,10 +534,12 @@ def push_to_wechat(html_content):
         return False
 
     date_str, _ = _get_date_str()
+    emoji = config["emoji"]
+    name_cn = config["name_cn"]
 
     payload = {
         "token": token,
-        "title": f"📺 每日电视行业趋势 · {date_str}",
+        "title": f"{emoji} 每日{name_cn} · {date_str}",
         "content": html_content,
         "template": "html",
     }
@@ -486,22 +566,25 @@ def push_to_wechat(html_content):
 # ==================== Main ====================
 
 def main():
+    config, topic = get_topic_config()
+
     print("=" * 60)
-    print("📺 TV Industry Daily News Push - Cloud Edition")
+    print(f"{config['emoji']} {config['name_cn']} Daily News Push - Cloud Edition")
+    print(f"  Topic: {topic}")
     now_str = datetime.now(BEIJING_TZ).strftime("%Y-%m-%d %H:%M:%S")
-    print(f"⏰ {now_str} (Beijing Time)")
+    print(f"  Time: {now_str} (Beijing Time)")
     print("=" * 60)
 
     # Step 1: Fetch RSS
     print("\n📡 Step 1: Fetching news from Google News RSS...")
-    articles = fetch_rss()
+    articles = fetch_rss(config)
     if not articles:
         print("❌ No articles found. Exiting.")
         sys.exit(1)
 
     # Step 2: AI Summarization
     print("\n🤖 Step 2: Summarizing with DeepSeek AI...")
-    selected = summarize_with_ai(articles)
+    selected = summarize_with_ai(articles, config)
     if not selected:
         print("❌ AI summarization failed. Exiting.")
         sys.exit(1)
@@ -524,17 +607,17 @@ def main():
 
     # Step 4: Generate HTML
     print("\n📄 Step 4: Generating HTML...")
-    html_file = generate_html_file(selected)
-    pushplus_html = generate_pushplus_html(selected)
+    html_file = generate_html_file(selected, config)
+    pushplus_html = generate_pushplus_html(selected, config)
 
-    output_path = "tv-industry-daily-push.html"
+    output_path = config["output_file"]
     with open(output_path, "w", encoding="utf-8") as f:
         f.write(html_file)
     print(f"  ✅ HTML saved to {output_path}")
 
     # Step 5: Push to WeChat
     print("\n📤 Step 5: Pushing to WeChat via PushPlus...")
-    push_to_wechat(pushplus_html)
+    push_to_wechat(pushplus_html, config)
 
     print("\n" + "=" * 60)
     print("✅ All done!")
