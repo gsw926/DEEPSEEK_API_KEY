@@ -119,10 +119,12 @@ TOPICS = {
 
 
 def get_topic_config():
-    """Get topic configuration from TOPIC env var."""
-    topic = os.environ.get("TOPIC", "tv").lower().strip()
+    """Get topic configuration from TOPIC env var. Defaults to 'all'."""
+    topic = os.environ.get("TOPIC", "all").lower().strip()
+    if topic == "all":
+        return None, "all"
     if topic not in TOPICS:
-        print(f"ERROR: Unknown topic '{topic}'. Available: {list(TOPICS.keys())}")
+        print(f"ERROR: Unknown topic '{topic}'. Available: {list(TOPICS.keys())} or 'all'")
         sys.exit(1)
     return TOPICS[topic], topic
 
@@ -565,12 +567,11 @@ def push_to_wechat(html_content, config):
 
 # ==================== Main ====================
 
-def main():
-    config, topic = get_topic_config()
-
-    print("=" * 60)
-    print(f"{config['emoji']} {config['name_cn']} Daily News Push - Cloud Edition")
-    print(f"  Topic: {topic}")
+def run_topic(topic_key, config):
+    """Run the full pipeline for a single topic."""
+    print("\n" + "=" * 60)
+    print(f"{config['emoji']} {config['name_cn']} Daily News Push")
+    print(f"  Topic: {topic_key}")
     now_str = datetime.now(BEIJING_TZ).strftime("%Y-%m-%d %H:%M:%S")
     print(f"  Time: {now_str} (Beijing Time)")
     print("=" * 60)
@@ -579,15 +580,15 @@ def main():
     print("\n📡 Step 1: Fetching news from Google News RSS...")
     articles = fetch_rss(config)
     if not articles:
-        print("❌ No articles found. Exiting.")
-        sys.exit(1)
+        print(f"❌ No articles found for {topic_key}. Skipping.")
+        return False
 
     # Step 2: AI Summarization
     print("\n🤖 Step 2: Summarizing with DeepSeek AI...")
     selected = summarize_with_ai(articles, config)
     if not selected:
-        print("❌ AI summarization failed. Exiting.")
-        sys.exit(1)
+        print(f"❌ AI summarization failed for {topic_key}. Skipping.")
+        return False
 
     # Step 3: Resolve URLs & fetch images
     print("\n🖼️ Step 3: Resolving URLs and fetching images...")
@@ -619,9 +620,29 @@ def main():
     print("\n📤 Step 5: Pushing to WeChat via PushPlus...")
     push_to_wechat(pushplus_html, config)
 
-    print("\n" + "=" * 60)
-    print("✅ All done!")
-    print("=" * 60)
+    print(f"\n✅ {config['name_cn']} done!")
+    return True
+
+
+def main():
+    _, topic = get_topic_config()
+
+    if topic == "all":
+        print("🚀 Running ALL topics: tv, design, ai")
+        results = {}
+        for tkey, tconfig in TOPICS.items():
+            results[tkey] = run_topic(tkey, tconfig)
+        print("\n" + "=" * 60)
+        print("📊 Summary:")
+        for tkey, success in results.items():
+            status = "✅" if success else "❌"
+            print(f"  {status} {TOPICS[tkey]['emoji']} {TOPICS[tkey]['name_cn']}")
+        print("=" * 60)
+    else:
+        run_topic(topic, TOPICS[topic])
+        print("\n" + "=" * 60)
+        print("✅ All done!")
+        print("=" * 60)
 
 
 if __name__ == "__main__":
