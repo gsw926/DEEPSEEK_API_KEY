@@ -15,6 +15,7 @@ import re
 import time
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone, timedelta
+from html import unescape as html_unescape
 from urllib.parse import quote, urljoin
 
 import requests
@@ -193,19 +194,98 @@ def fetch_rss(config):
 
 # ==================== Step 2: Resolve URLs & Fetch Images ====================
 
-def resolve_and_get_image(google_news_url):
-    """Follow Google News redirect to get real article URL and extract image."""
-    real_url = google_news_url
-    image_url = None
+def resolve_google_news_url(google_news_url):
+    """Resolve a Google News article URL to the real article URL.
 
+    Google News uses JS-based redirects, so requests.get() can't follow them
+    directly. Instead, we fetch the Google News page and parse the HTML for
+    the real article URL in data-n-au attribute, meta refresh, or JS redirects.
+    """
     try:
         resp = requests.get(google_news_url, headers=HEADERS, timeout=TIMEOUT, allow_redirects=True)
-        real_url = resp.url
 
-        if "news.google.com" not in real_url:
-            image_url = extract_image(resp.text, real_url)
+        # Case 1: HTTP redirect already took us to the real article
+        if "news.google.com" not in resp.url:
+            return resp.url, resp.text
+
+        # Case 2: Still on Google News - parse the HTML for the real URL
+        html = resp.text
+
+        # Method A: data-n-au attribute (most common in modern Google News)
+        # The URL is HTML-entity-encoded in the attribute
+        match = re.search(r'data-n-au="([^"]+)"', html)
+        if match:
+            real_url = html_unescape(match.group(1))
+            if real_url.startswith("http") and "news.google.com" not in real_url:
+                return real_url, html
+
+        # Method B: data-n-au with &quot; encoding
+        match = re.search(r'data-n-au=&quot;([^&]+)&quot;', html)
+        if match:
+            real_url = html_unescape(match.group(1))
+            if real_url.startswith("http") and "news.google.com" not in real_url:
+                return real_url, html
+
+        # Method C: meta refresh redirect
+        match = re.search(
+            r'<meta[^>]+http-equiv=["\']refresh["\'][^>]+url=([^"\'>\s]+)',
+            html, re.IGNORECASE,
+        )
+        if match:
+            real_url = html_unescape(match.group(1))
+            if real_url.startswith("http") and "news.google.com" not in real_url:
+                return real_url, html
+
+        # Method D: JavaScript window.location redirect
+        match = re.search(
+            r'window\.location\.(?:replace|href)\s*=\s*["\']([^"\']+)["\']',
+            html, re.IGNORECASE,
+        )
+        if match:
+            real_url = html_unescape(match.group(1))
+            if real_url.startswith("http") and "news.google.com" not in real_url:
+                return real_url, html
+
+        # Method E: Look for <a> tags with data-n-tl attribute or article links
+        for match in re.finditer(r'<a[^>]+href="(https?://[^"]+)"[^>]*>', html):
+            candidate = html_unescape(match.group(1))
+            if ("news.google.com" not in candidate and
+                    "google.com" not in candidate and
+                    "gstatic" not in candidate and
+                    "googleapis" not in candidate):
+                return candidate, html
+
+        # Method F: Try without /rss/ in the URL (some Google News URLs work differently)
+        if "/rss/articles/" in google_news_url:
+            alt_url = google_news_url.replace("/rss/articles/", "/articles/")
+            try:
+                resp2 = requests.get(alt_url, headers=HEADERS, timeout=TIMEOUT, allow_redirects=True)
+                if "news.google.com" not in resp2.url:
+                    return resp2.url, resp2.text
+                # Re-check data-n-au on the alternate URL response
+                match = re.search(r'data-n-au="([^"]+)"', resp2.text)
+                if match:
+                    real_url = html_unescape(match.group(1))
+                    if real_url.startswith("http") and "news.google.com" not in real_url:
+                        return real_url, resp2.text
+            except Exception:
+                pass
+
+        # Fallback: return the original Google News URL
+        return resp.url, html
+
     except Exception as e:
         print(f"    Resolve error: {e}")
+        return google_news_url, ""
+
+
+def resolve_and_get_image(google_news_url):
+    """Follow Google News redirect to get real article URL and extract image."""
+    real_url, html_content = resolve_google_news_url(google_news_url)
+
+    image_url = None
+    if html_content and "news.google.com" not in real_url:
+        image_url = extract_image(html_content, real_url)
 
     return real_url, image_url
 
@@ -328,6 +408,20 @@ def summarize_with_ai(articles, config):
 
 # ==================== Step 4: Generate HTML ====================
 
+def _escape_attr(value):
+    """Escape a string for safe use in an HTML attribute value."""
+    if not value:
+        return ""
+    return value.replace("&", "&amp;").replace('"', "&quot;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def _shorten_url(url, max_len=80):
+    """Shorten URL for display."""
+    if len(url) <= max_len:
+        return url
+    return url[:max_len] + "..."
+
+
 def _get_date_str():
     now = datetime.now(BEIJING_TZ)
     weekdays = ["\u661f\u671f\u4e00", "\u661f\u671f\u4e8c", "\u661f\u671f\u4e09", "\u661f\u671f\u56db", "\u661f\u671f\u4e94", "\u661f\u671f\u516d", "\u661f\u671f\u65e5"]
@@ -372,7 +466,10 @@ def generate_html_file(articles, config):
         url = a.get("original_url", "#")
         img = a.get("image_url", "")
 
-        img_tag = f'<img src="{img}" class="card-img" onerror="this.style.display=\'none\'" />' if img else ""
+        safe_url = _escape_attr(url)
+        safe_img = _escape_attr(img) if img else ""
+
+        img_tag = f'<img src="{safe_img}" class="card-img" onerror="this.style.display=\'none\'" />' if safe_img else ""
 
         cards += f"""
     <div class="card">
@@ -390,7 +487,7 @@ def generate_html_file(articles, config):
           <div class="insight-label" style="color:{s['color']};">\u8d8b\u52bf\u6d1e\u5bdf</div>
           <div class="insight-text">{insight}</div>
         </div>
-        <a href="{url}" target="_blank" class="card-link" style="color:{s['color']};">\u9605\u8bfb\u539f\u6587 -></a>
+        <a href="{safe_url}" target="_blank" rel="noopener" class="card-link" style="color:{s['color']};">\u9605\u8bfb\u539f\u6587 -></a>
       </div>
     </div>"""
 
@@ -485,7 +582,17 @@ def generate_pushplus_html(articles, config):
         url = a.get("original_url", "#")
         img = a.get("image_url", "")
 
-        img_tag = f'<img src="{img}" style="width:100%;height:200px;object-fit:cover;display:block;" onerror="this.style.display=\'none\'" />' if img else ""
+        safe_url = _escape_attr(url)
+        safe_img = _escape_attr(img) if img else ""
+
+        img_tag = f'<img src="{safe_img}" style="width:100%;height:200px;object-fit:cover;display:block;" onerror="this.style.display=\'none\'" />' if safe_img else ""
+
+        # Show a short visible URL below the button as a fallback (in case WeChat blocks the <a> link)
+        is_google_news = "news.google.com" in url
+        url_display = ""
+        if url and url != "#":
+            short_url = _shorten_url(url, 90)
+            url_display = f'<div style="font-size:11px;color:#9ca3af;margin-top:6px;word-break:break-all;line-height:1.5;">\U0001f517 {short_url}</div>'
 
         cards += f"""
     <div style="background:#fff;margin:10px;border-radius:12px;overflow:hidden;box-shadow:0 1px 6px rgba(0,0,0,0.05);">
@@ -503,7 +610,8 @@ def generate_pushplus_html(articles, config):
           <div style="font-size:11px;font-weight:700;color:{s['color']};margin-bottom:3px;">\u8d8b\u52bf\u6d1e\u5bdf</div>
           <div style="font-size:12px;color:#4b5563;line-height:1.7;">{insight}</div>
         </div>
-        <a href="{url}" style="font-size:13px;font-weight:600;color:{s['color']};text-decoration:none;">\u9605\u8bfb\u539f\u6587 -></a>
+        <a href="{safe_url}" style="display:inline-block;font-size:13px;font-weight:600;color:{s['color']};text-decoration:none;padding:6px 14px;border:1px solid {s['color']};border-radius:6px;">\u9605\u8bfb\u539f\u6587 \u2192</a>
+        {url_display}
       </div>
     </div>"""
 
@@ -598,7 +706,10 @@ def run_topic(topic_key, config):
             short_title = a.get("title", "")[:30]
             print(f"  Processing: {short_title}...")
             real_url, img = resolve_and_get_image(url)
+            resolved = "news.google.com" not in real_url
             a["original_url"] = real_url
+            status = "✅ Resolved" if resolved else "⚠️ Still Google News URL"
+            print(f"    {status}: {real_url[:80]}")
             if img:
                 a["image_url"] = img
                 print(f"    ✅ Image: {img[:80]}")
