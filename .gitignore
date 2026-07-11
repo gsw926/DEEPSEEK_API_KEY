@@ -1,0 +1,4 @@
+__pycache__/
+*.pyc
+tv-industry-daily-push.html
+.env
