@@ -130,6 +130,29 @@ def get_topic_config():
     return TOPICS[topic], topic
 
 
+def _today_str():
+    """Today's date string in Beijing time (YYYY-MM-DD)."""
+    return datetime.now(BEIJING_TZ).strftime("%Y-%m-%d")
+
+
+def check_already_pushed(topic_key):
+    """Check if we already pushed today for this topic.
+    Uses a marker file committed back via GitHub Actions cache.
+    Returns True if already pushed today.
+    """
+    marker = f".pushed_{topic_key}_{_today_str()}"
+    if os.path.exists(marker):
+        return True
+    return False
+
+
+def mark_pushed(topic_key):
+    """Create a marker file indicating we pushed today."""
+    marker = f".pushed_{topic_key}_{_today_str()}"
+    with open(marker, "w") as f:
+        f.write(datetime.now(BEIJING_TZ).isoformat())
+
+
 # ==================== Step 1: Fetch RSS News ====================
 
 def fetch_rss(config):
@@ -688,6 +711,11 @@ def push_to_wechat(html_content, config):
 
 def run_topic(topic_key, config):
     """Run the full pipeline for a single topic."""
+    # Dedup: skip if already pushed today
+    if check_already_pushed(topic_key):
+        print(f"\n⏭️  {config['emoji']} {config['name_cn']} already pushed today ({_today_str()}). Skipping.")
+        return True
+
     print("\n" + "=" * 60)
     print(f"{config['emoji']} {config['name_cn']} Daily News Push")
     print(f"  Topic: {topic_key}")
@@ -751,10 +779,12 @@ def run_topic(topic_key, config):
 
     # Step 5: Push to WeChat
     print("\n📤 Step 5: Pushing to WeChat via PushPlus...")
-    push_to_wechat(pushplus_html, config)
+    success = push_to_wechat(pushplus_html, config)
+    if success:
+        mark_pushed(topic_key)
 
     print(f"\n✅ {config['name_cn']} done!")
-    return True
+    return success
 
 
 def main():
