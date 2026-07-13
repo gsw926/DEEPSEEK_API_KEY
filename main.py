@@ -347,7 +347,7 @@ def _deduplicate_ai_articles(articles):
     unique = []
     for a in articles:
         title = a.get("title", "").lower().strip()
-        title_clean = re.sub(r"[《》「」【】""''\u00b7\u2014\u2013\u2015\s]", "", title)
+        title_clean = re.sub(r"[《》「」【】""''·—– \t\n]", "", title)
         key = title_clean[:20]
         if key in seen:
             print(f"  \U0001f504 Dedup: removing similar article '{a.get('title', '')[:40]}'")
@@ -369,7 +369,7 @@ def summarize_with_ai(articles, config):
     seen_titles = set()
     for a in articles:
         title_key = a["title"].lower().strip()[:40]
-        title_clean = re.sub(r"[《》「」【】""''\u00b7\u2014\u2013\u2015\s]", "", title_key)
+        title_clean = re.sub(r"[《》「」【】""''·—– \t\n]", "", title_key)
         if title_clean[:25] in seen_titles:
             continue
         seen_titles.add(title_clean[:25])
@@ -528,19 +528,21 @@ def generate_html_file(articles, config):
         url_is_search = a.get("url_is_search", False)
         button_text = "\U0001f50d \u641c\u7d22\u539f\u6587 \u2192" if url_is_search else "\u9605\u8bfb\u539f\u6587 \u2192"
 
-        img_tag = f'<img src="{safe_img}" class="card-img" onerror="this.style.display=\'none\'" />' if safe_img else ""
+        img_tag = f'<img src="{safe_img}" class="card-img" onerror="this.style.display=&quot;none&quot;" />' if safe_img else ""
 
-        # "一键复制" button + hidden URL text for WeChat fallback
+        # "一键复制" button + plain text URL for WeChat fallback
         copy_section = ""
         if url and url != "#":
-            # WeChat doesn't support JS clipboard, so we provide a button with tooltip
-            # AND show the URL as plain text below it for long-press copy fallback
+            # Build onclick separately to avoid f-string escape issues in Python 3.12
+            onclick_js = "navigator.clipboard.writeText('" + url.replace("'", "\\'") + "').then(function(){this.innerText='已复制!';}.bind(this))"
+            btn_style = (
+                f"font-size:12px;padding:5px 12px;border-radius:6px;border:1px solid {s['color']};"
+                f"background:{s['color']}20;color:{s['color']};cursor:pointer;font-weight:600;"
+                f"white-space:nowrap;"
+            )
             copy_section = (
                 f'<div style="margin-top:8px;display:flex;align-items:center;gap:6px;">'
-                f'<button onclick="navigator.clipboard.writeText(\'{url}\').then(function(){this.innerText=\'已复制!\';}.bind(this))"'
-                f' style="font-size:12px;padding:5px 12px;border-radius:6px;border:1px solid {s["color"]};'
-                f'background:{s["color"]}20;color:{s["color"]};cursor:pointer;font-weight:600;'
-                f'white-space:nowrap;">\U0001f4cb 一键复制链接</button>'
+                f'<button onclick="{onclick_js}" style="{btn_style}">\U0001f4cb 一键复制链接</button>'
                 f'</div>'
                 f'<div style="margin-top:4px;padding:6px 10px;background:#f3f4f6;border-radius:6px;'
                 f'font-size:11px;color:#6b7280;word-break:break-all;line-height:1.5;'
@@ -664,22 +666,23 @@ def generate_pushplus_html(articles, config):
         safe_url = _escape_attr(url)
         safe_img = _escape_attr(img) if img else ""
 
-        img_tag = f'<img src="{safe_img}" style="width:100%;height:200px;object-fit:cover;display:block;" onerror="this.style.display=\'none\'" />' if safe_img else ""
+        img_tag = f'<img src="{safe_img}" style="width:100%;height:200px;object-fit:cover;display:block;" onerror="this.style.display=&quot;none&quot;" />' if safe_img else ""
 
         url_is_search = a.get("url_is_search", False)
         button_text = "\U0001f50d \u641c\u7d22\u539f\u6587 \u2192" if url_is_search else "\u9605\u8bfb\u539f\u6587 \u2192"
 
         # "一键复制" button for PushPlus/WeChat
-        # WeChat doesn't support JS clipboard API, but the button provides visual affordance
-        # Below the button, show the URL as plain text for long-press copy (WeChat's native mechanism)
         copy_section = ""
         if url and url != "#":
+            onclick_js = "navigator.clipboard.writeText('" + url.replace("'", "\\'") + "').then(function(){this.innerText='✅ 已复制!';}.bind(this))"
+            btn_style = (
+                f"font-size:12px;padding:5px 12px;border-radius:6px;border:1px solid {s['color']};"
+                f"background:{s['color']}20;color:{s['color']};cursor:pointer;font-weight:600;"
+                f"white-space:nowrap;"
+            )
             copy_section = (
                 f'<div style="margin-top:8px;display:flex;align-items:center;gap:6px;">'
-                f'<button onclick="navigator.clipboard.writeText(\'{url}\').then(function(){this.innerText=\'\u2705 \u5df2\u590d\u5236!\';}.bind(this))"'
-                f' style="font-size:12px;padding:5px 12px;border-radius:6px;border:1px solid {s["color"]};'
-                f'background:{s["color"]}20;color:{s["color"]};cursor:pointer;font-weight:600;'
-                f'white-space:nowrap;">\U0001f4cb \u4e00\u952e\u590d\u5236\u94fe\u63a5</button>'
+                f'<button onclick="{onclick_js}" style="{btn_style}">\U0001f4cb \u4e00\u952e\u590d\u5236\u94fe\u63a5</button>'
                 f'</div>'
                 f'<div style="margin-top:4px;padding:6px 10px;background:#f3f4f6;border-radius:6px;'
                 f'font-size:11px;color:#6b7280;word-break:break-all;line-height:1.5;'
