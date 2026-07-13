@@ -139,7 +139,11 @@ def check_already_pushed(topic_key):
     """Check if we already pushed today for this topic.
     Uses a marker file committed back via GitHub Actions cache.
     Returns True if already pushed today.
+    Force push: set FORCE_PUSH=1 env var to bypass dedup.
     """
+    if os.environ.get("FORCE_PUSH", "").strip() == "1":
+        print(f"  🔄 FORCE_PUSH enabled, bypassing dedup check for {topic_key}")
+        return False
     marker = f".pushed_{topic_key}_{_today_str()}"
     if os.path.exists(marker):
         return True
