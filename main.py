@@ -102,7 +102,7 @@ TOPICS = {
             ("\u6a21\u578b\u4e0e\u6280\u672f", "LLM new model release 2025 GPT Claude Gemini", "en"),
             ("\u4ea7\u54c1\u5e94\u7528", "AI \u4ea7\u54c1 \u5e94\u7528 \u53d1\u5e03 2025", "zh-CN"),
             ("\u4ea7\u54c1\u5e94\u7528", "AI product launch features 2025", "en"),
-            ("\u884c\u4e1a\u52a8\u6001", "AI \u884c\u4e1a \u8d44\u8baf \u878d\u8d44 \u653f\u7b56", "zh-CN"),
+            ("\u884c\u4e1a\u52a8\u6001", "AI \u884c\u4e1a \u8d44\u8bba \u878d\u8d44 \u653f\u7b56", "zh-CN"),
             ("\u884c\u4e1a\u52a8\u6001", "AI industry news funding regulation 2025", "en"),
             ("\u524d\u6cbf\u7814\u7a76", "AI \u7814\u7a76 \u8bba\u6587 \u7a81\u7834 \u57fa\u51c6\u6d4b\u8bd5", "zh-CN"),
             ("\u524d\u6cbf\u7814\u7a76", "AI research paper benchmark breakthrough 2025", "en"),
@@ -235,7 +235,6 @@ def resolve_google_news_url(google_news_url):
         html = resp.text
 
         # Method A: data-n-au attribute (most common in modern Google News)
-        # The URL is HTML-entity-encoded in the attribute
         match = re.search(r'data-n-au="([^"]+)"', html)
         if match:
             real_url = html_unescape(match.group(1))
@@ -278,14 +277,13 @@ def resolve_google_news_url(google_news_url):
                     "googleapis" not in candidate):
                 return candidate, html
 
-        # Method F: Try without /rss/ in the URL (some Google News URLs work differently)
+        # Method F: Try without /rss/ in the URL
         if "/rss/articles/" in google_news_url:
             alt_url = google_news_url.replace("/rss/articles/", "/articles/")
             try:
                 resp2 = requests.get(alt_url, headers=HEADERS, timeout=TIMEOUT, allow_redirects=True)
                 if "news.google.com" not in resp2.url:
                     return resp2.url, resp2.text
-                # Re-check data-n-au on the alternate URL response
                 match = re.search(r'data-n-au="([^"]+)"', resp2.text)
                 if match:
                     real_url = html_unescape(match.group(1))
@@ -341,12 +339,42 @@ def extract_image(html, base_url):
 
 # ==================== Step 3: DeepSeek Summarization ====================
 
+def _deduplicate_ai_articles(articles):
+    """Remove duplicate/similar articles from AI output.
+    Uses title similarity (first 20 chars + core keywords) to detect duplicates.
+    """
+    seen = set()
+    unique = []
+    for a in articles:
+        title = a.get("title", "").lower().strip()
+        title_clean = re.sub(r"[《》「」【】""''\u00b7\u2014\u2013\u2015\s]", "", title)
+        key = title_clean[:20]
+        if key in seen:
+            print(f"  \U0001f504 Dedup: removing similar article '{a.get('title', '')[:40]}'")
+            continue
+        seen.add(key)
+        unique.append(a)
+    return unique
+
+
 def summarize_with_ai(articles, config):
     """Use DeepSeek API to select and summarize the best articles."""
     api_key = os.environ.get("DEEPSEEK_API_KEY", "")
     if not api_key:
         print("ERROR: DEEPSEEK_API_KEY not set")
         return None
+
+    # Pre-deduplicate: remove articles with very similar titles before sending to AI
+    pre_deduped = []
+    seen_titles = set()
+    for a in articles:
+        title_key = a["title"].lower().strip()[:40]
+        title_clean = re.sub(r"[《》「」【】""''\u00b7\u2014\u2013\u2015\s]", "", title_key)
+        if title_clean[:25] in seen_titles:
+            continue
+        seen_titles.add(title_clean[:25])
+        pre_deduped.append(a)
+    print(f"  Pre-dedup: {len(articles)} \u2192 {len(pre_deduped)} articles")
 
     articles_json = json.dumps(
         [
@@ -358,7 +386,7 @@ def summarize_with_ai(articles, config):
                 "description": a["description"],
                 "pub_date": a["pub_date"],
             }
-            for a in articles
+            for a in pre_deduped
         ],
         ensure_ascii=False,
         indent=2,
@@ -370,7 +398,7 @@ def summarize_with_ai(articles, config):
     user_prompt = f"""\u8bf7\u4ece\u4ee5\u4e0b\u65b0\u95fb\u5217\u8868\u4e2d\u7b5b\u9009\u548c\u603b\u7ed3\uff0c\u751f\u6210\u6bcf\u65e5\u884c\u4e1a\u8d8b\u52bf\u63a8\u9001\u3002
 
 \u8981\u6c42\uff1a
-1. \u53bb\u91cd\uff1a\u540c\u4e00\u4e8b\u4ef6\u53ea\u4fdd\u7559\u4e00\u6761
+1. **\u4e25\u683c\u53bb\u91cd**\uff1a\u540c\u4e00\u4e8b\u4ef8/\u8bdd\u9898\u53ea\u4fdd\u7559\u4e00\u6761\u65b0\u95fb\uff0c\u5373\u4f7f\u6807\u9898\u7565\u6709\u4e0d\u540c\u4e5f\u4e0d\u8981\u91cd\u590d
 2. \u7b5b\u90094-6\u6761\u6700\u6709\u4ef7\u503c\u7684\u65b0\u95fb\uff0c\u786e\u4fdd\u8986\u76d6\u56db\u4e2a\u65b9\u5411\uff1a{categories}
 3. \u4e3a\u6bcf\u6761\u65b0\u95fb\u751f\u6210\u4e2d\u6587\u6807\u9898\u3001\u6458\u8981\u548c\u8d8b\u52bf\u6d1e\u5bdf
 4. summary\u4e2d\u7684\u5173\u952e\u6570\u636e\u7528<strong>\u6807\u7b7e\u52a0\u7c97\uff0c\u5982 <strong>92.8%</strong>
@@ -420,6 +448,11 @@ def summarize_with_ai(articles, config):
 
         selected = result.get("articles", [])
         print(f"  DeepSeek selected {len(selected)} articles")
+
+        # Post-deduplicate: remove similar articles from AI output
+        selected = _deduplicate_ai_articles(selected)
+        print(f"  Post-dedup: {len(selected)} unique articles")
+
         return selected
 
     except Exception as e:
@@ -497,6 +530,25 @@ def generate_html_file(articles, config):
 
         img_tag = f'<img src="{safe_img}" class="card-img" onerror="this.style.display=\'none\'" />' if safe_img else ""
 
+        # "一键复制" button + hidden URL text for WeChat fallback
+        copy_section = ""
+        if url and url != "#":
+            # WeChat doesn't support JS clipboard, so we provide a button with tooltip
+            # AND show the URL as plain text below it for long-press copy fallback
+            copy_section = (
+                f'<div style="margin-top:8px;display:flex;align-items:center;gap:6px;">'
+                f'<button onclick="navigator.clipboard.writeText(\'{url}\').then(function(){this.innerText=\'已复制!\';}.bind(this))"'
+                f' style="font-size:12px;padding:5px 12px;border-radius:6px;border:1px solid {s["color"]};'
+                f'background:{s["color"]}20;color:{s["color"]};cursor:pointer;font-weight:600;'
+                f'white-space:nowrap;">\U0001f4cb 一键复制链接</button>'
+                f'</div>'
+                f'<div style="margin-top:4px;padding:6px 10px;background:#f3f4f6;border-radius:6px;'
+                f'font-size:11px;color:#6b7280;word-break:break-all;line-height:1.5;'
+                f'border:1px dashed #d1d5db;">'
+                f'\U0001f517 \u957f\u6309\u590d\u5236\uff1a<span style="color:#3b82f6;">{url}</span>'
+                f'</div>'
+            )
+
         cards += f"""
     <div class="card">
       <div class="card-banner" style="background:linear-gradient(90deg,{s['grad']});"></div>
@@ -514,6 +566,7 @@ def generate_html_file(articles, config):
           <div class="insight-text">{insight}</div>
         </div>
         <a href="{safe_url}" target="_blank" rel="noopener" class="card-link" style="color:{s['color']};">{button_text}</a>
+        {copy_section}
       </div>
     </div>"""
 
@@ -613,18 +666,25 @@ def generate_pushplus_html(articles, config):
 
         img_tag = f'<img src="{safe_img}" style="width:100%;height:200px;object-fit:cover;display:block;" onerror="this.style.display=\'none\'" />' if safe_img else ""
 
-        # Show the FULL URL as plain text below the button so the user can long-press to copy it
-        # (WeChat often blocks <a> links to external sites, so plain text is the reliable fallback)
         url_is_search = a.get("url_is_search", False)
         button_text = "\U0001f50d \u641c\u7d22\u539f\u6587 \u2192" if url_is_search else "\u9605\u8bfb\u539f\u6587 \u2192"
-        url_display = ""
+
+        # "一键复制" button for PushPlus/WeChat
+        # WeChat doesn't support JS clipboard API, but the button provides visual affordance
+        # Below the button, show the URL as plain text for long-press copy (WeChat's native mechanism)
+        copy_section = ""
         if url and url != "#":
-            url_display = (
-                f'<div style="margin-top:8px;padding:8px 10px;background:#f3f4f6;border-radius:6px;'
-                f'font-size:12px;color:#6b7280;word-break:break-all;line-height:1.6;'
+            copy_section = (
+                f'<div style="margin-top:8px;display:flex;align-items:center;gap:6px;">'
+                f'<button onclick="navigator.clipboard.writeText(\'{url}\').then(function(){this.innerText=\'\u2705 \u5df2\u590d\u5236!\';}.bind(this))"'
+                f' style="font-size:12px;padding:5px 12px;border-radius:6px;border:1px solid {s["color"]};'
+                f'background:{s["color"]}20;color:{s["color"]};cursor:pointer;font-weight:600;'
+                f'white-space:nowrap;">\U0001f4cb \u4e00\u952e\u590d\u5236\u94fe\u63a5</button>'
+                f'</div>'
+                f'<div style="margin-top:4px;padding:6px 10px;background:#f3f4f6;border-radius:6px;'
+                f'font-size:11px;color:#6b7280;word-break:break-all;line-height:1.5;'
                 f'border:1px dashed #d1d5db;">'
-                f'\U0001f517 \u94fe\u63a5\uff08\u957f\u6309\u53ef\u590d\u5236\uff09\uff1a<br/>'
-                f'<span style="color:#3b82f6;">{url}</span>'
+                f'\U0001f517 \u957f\u6309\u590d\u5236\uff1a<span style="color:#3b82f6;">{url}</span>'
                 f'</div>'
             )
 
@@ -645,7 +705,7 @@ def generate_pushplus_html(articles, config):
           <div style="font-size:12px;color:#4b5563;line-height:1.7;">{insight}</div>
         </div>
         <a href="{safe_url}" style="display:inline-block;font-size:13px;font-weight:600;color:{s['color']};text-decoration:none;padding:6px 14px;border:1px solid {s['color']};border-radius:6px;">{button_text}</a>
-        {url_display}
+        {copy_section}
       </div>
     </div>"""
 
@@ -713,7 +773,7 @@ def run_topic(topic_key, config):
     """Run the full pipeline for a single topic."""
     # Dedup: skip if already pushed today
     if check_already_pushed(topic_key):
-        print(f"\n⏭️  {config['emoji']} {config['name_cn']} already pushed today ({_today_str()}). Skipping.")
+        print(f"\n\U0001f23ed  {config['emoji']} {config['name_cn']} already pushed today ({_today_str()}). Skipping.")
         return True
 
     print("\n" + "=" * 60)
@@ -724,21 +784,21 @@ def run_topic(topic_key, config):
     print("=" * 60)
 
     # Step 1: Fetch RSS
-    print("\n📡 Step 1: Fetching news from Google News RSS...")
+    print("\n\U0001f4e1 Step 1: Fetching news from Google News RSS...")
     articles = fetch_rss(config)
     if not articles:
-        print(f"❌ No articles found for {topic_key}. Skipping.")
+        print(f"\u274c No articles found for {topic_key}. Skipping.")
         return False
 
     # Step 2: AI Summarization
-    print("\n🤖 Step 2: Summarizing with DeepSeek AI...")
+    print("\n\U0001f916 Step 2: Summarizing with DeepSeek AI...")
     selected = summarize_with_ai(articles, config)
     if not selected:
-        print(f"❌ AI summarization failed for {topic_key}. Skipping.")
+        print(f"\u274c AI summarization failed for {topic_key}. Skipping.")
         return False
 
     # Step 3: Resolve URLs & fetch images
-    print("\n🖼️ Step 3: Resolving URLs and fetching images...")
+    print("\n\U0001f5bc Step 3: Resolving URLs and fetching images...")
     for a in selected:
         url = a.get("original_url", "")
         if url:
@@ -747,43 +807,42 @@ def run_topic(topic_key, config):
             real_url, img = resolve_and_get_image(url)
             resolved = "news.google.com" not in real_url
 
-            # If URL resolution failed (still Google News), use Google search as fallback
             if not resolved:
                 title = a.get("title", "")
                 source = a.get("source", "")
                 search_query = f"{title} {source}".strip() if source else title
                 real_url = f"https://www.google.com/search?q={quote(search_query)}"
                 a["url_is_search"] = True
-                print(f"    🔄 Fallback to Google search: {real_url[:80]}")
+                print(f"    \U0001f504 Fallback to Google search: {real_url[:80]}")
             else:
                 a["url_is_search"] = False
-                print(f"    ✅ Resolved: {real_url[:80]}")
+                print(f"    \u2705 Resolved: {real_url[:80]}")
 
             a["original_url"] = real_url
             if img:
                 a["image_url"] = img
-                print(f"    ✅ Image: {img[:80]}")
+                print(f"    \u2705 Image: {img[:80]}")
             else:
-                print(f"    ⚠️ No image found")
+                print(f"    \u26a0\ufe0f No image found")
             time.sleep(0.5)
 
     # Step 4: Generate HTML
-    print("\n📄 Step 4: Generating HTML...")
+    print("\n\U0001f4c4 Step 4: Generating HTML...")
     html_file = generate_html_file(selected, config)
     pushplus_html = generate_pushplus_html(selected, config)
 
     output_path = config["output_file"]
     with open(output_path, "w", encoding="utf-8") as f:
         f.write(html_file)
-    print(f"  ✅ HTML saved to {output_path}")
+    print(f"  \u2705 HTML saved to {output_path}")
 
     # Step 5: Push to WeChat
-    print("\n📤 Step 5: Pushing to WeChat via PushPlus...")
+    print("\n\U0001f4e4 Step 5: Pushing to WeChat via PushPlus...")
     success = push_to_wechat(pushplus_html, config)
     if success:
         mark_pushed(topic_key)
 
-    print(f"\n✅ {config['name_cn']} done!")
+    print(f"\n\u2705 {config['name_cn']} done!")
     return success
 
 
@@ -791,20 +850,20 @@ def main():
     _, topic = get_topic_config()
 
     if topic == "all":
-        print("🚀 Running ALL topics: tv, design, ai")
+        print("\U0001f680 Running ALL topics: tv, design, ai")
         results = {}
         for tkey, tconfig in TOPICS.items():
             results[tkey] = run_topic(tkey, tconfig)
         print("\n" + "=" * 60)
-        print("📊 Summary:")
+        print("\U0001f4ca Summary:")
         for tkey, success in results.items():
-            status = "✅" if success else "❌"
+            status = "\u2705" if success else "\u274c"
             print(f"  {status} {TOPICS[tkey]['emoji']} {TOPICS[tkey]['name_cn']}")
         print("=" * 60)
     else:
         run_topic(topic, TOPICS[topic])
         print("\n" + "=" * 60)
-        print("✅ All done!")
+        print("\u2705 All done!")
         print("=" * 60)
 
 
