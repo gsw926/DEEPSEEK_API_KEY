@@ -2,7 +2,10 @@ name: TV Industry Daily Push
 
 on:
   schedule:
+    - cron: '0 0 * * *'
+    - cron: '15 0 * * *'
     - cron: '30 0 * * *'
+    - cron: '45 0 * * *'
   workflow_dispatch: {}
 
 jobs:
@@ -11,6 +14,17 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Restore push state cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            .pushed_tv_*
+            .pushed_design_*
+            .pushed_ai_*
+          key: push-state-${{ github.run_id }}
+          restore-keys: |
+            push-state-
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -30,5 +44,26 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: tv-daily-html
-          path: tv-industry-daily-push.html
+          path: |
+            tv-industry-daily-push.html
+            design-industry-daily-push.html
+            ai-industry-daily-push.html
           retention-days: 30
+
+      - name: Clean old markers
+        run: |
+          TODAY=$(date -u -d "+8 hours" +%Y-%m-%d)
+          for f in .pushed_*; do
+            if [[ "$f" != *"$TODAY"* ]]; then
+              rm -f "$f"
+            fi
+          done
+
+      - name: Save push state cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            .pushed_tv_*
+            .pushed_design_*
+            .pushed_ai_*
+          key: push-state-${{ github.run_id }}
