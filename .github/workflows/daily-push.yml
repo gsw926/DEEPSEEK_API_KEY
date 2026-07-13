@@ -2,10 +2,10 @@ name: TV Industry Daily Push
 
 on:
   schedule:
-    - cron: '0 0 * * *'
-    - cron: '15 0 * * *'
-    - cron: '30 0 * * *'
-    - cron: '45 0 * * *'
+    - cron: '0 1 * * *'
+    - cron: '15 1 * * *'
+    - cron: '30 1 * * *'
+    - cron: '45 1 * * *'
   workflow_dispatch: {}
 
 jobs:
