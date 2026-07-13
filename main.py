@@ -139,10 +139,15 @@ def check_already_pushed(topic_key):
     """Check if we already pushed today for this topic.
     Uses a marker file committed back via GitHub Actions cache.
     Returns True if already pushed today.
-    Force push: set FORCE_PUSH=1 env var to bypass dedup.
+    Bypass dedup when: FORCE_PUSH=1 env var OR manual trigger (workflow_dispatch).
     """
     if os.environ.get("FORCE_PUSH", "").strip() == "1":
         print(f"  🔄 FORCE_PUSH enabled, bypassing dedup check for {topic_key}")
+        return False
+    # Manual trigger (workflow_dispatch) should always push, skip dedup
+    event = os.environ.get("GITHUB_EVENT_NAME", "")
+    if event == "workflow_dispatch":
+        print(f"  🔄 Manual trigger (workflow_dispatch), bypassing dedup check for {topic_key}")
         return False
     marker = f".pushed_{topic_key}_{_today_str()}"
     if os.path.exists(marker):
